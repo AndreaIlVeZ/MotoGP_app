@@ -20,8 +20,8 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(riders.rider_router)
-app.include_router(races.race_router)
+app.include_router(riders.rider_router, prefix = "/api")
+app.include_router(races.race_router, prefix = "/api")
 
 
 @app.on_event("startup")

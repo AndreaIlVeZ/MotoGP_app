@@ -9,7 +9,7 @@ rider_router = APIRouter(prefix ="/riders", tags=["Riders"])
 
 
 #list all riders ( maybe for a standard query)
-@rider_router.get("",  response_model=schemas.RidersList)
+@rider_router.get("/",  response_model=schemas.RidersList)
 # riders depends on the db and i tell it to do a nice all query
 # the glue!!!
 def list_riders(db: Session = Depends(get_db)):
