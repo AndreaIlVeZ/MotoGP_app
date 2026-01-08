@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+from pathlib import Path
 
 
 class Settings(BaseSettings):
@@ -21,6 +22,10 @@ class Settings(BaseSettings):
     db_password: str = "password"
     db_name: str = "motogp_db"
     
+    # backend 
+    BACKEND_ROOT: Path = Path(__file__).resolve().parent.parent
+    CHROMEDRIVER_PATH: Path = BACKEND_ROOT / "drivers" / "chromedriver"
+
     # Security
     secret_key: str
     algorithm: str = "HS256"
@@ -32,6 +37,12 @@ class Settings(BaseSettings):
     # MotoGP API
     motogp_api_key: str = ""
     motogp_api_url: str = "https://api.motogp.com/v1"
+
+    # Supabase Storage
+    SUPABASE_URL: str
+    SUPABASE_ANON_KEY: str
+    SUPABASE_BUCKET: str = "motogp-pdfs"
+    
     
     class Config:
         env_file = ".env"

@@ -7,6 +7,7 @@ python-multipart==0.0.18
 sqlalchemy==2.0.36
 psycopg2-binary==2.9.10
 alembic==1.14.0
+supabase==2.3.4
 
 # Environment & Config
 python-dotenv==1.0.1
@@ -27,3 +28,8 @@ pytest-asyncio==0.24.0
 # Development
 black==24.10.0
 flake8==7.1.1
+
+# ETL 
+wikipedia-api==0.8.1
+selenium==4.16.0
+webdriver-manager==4.0.1
