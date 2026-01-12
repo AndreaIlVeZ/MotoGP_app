@@ -1,104 +1,163 @@
+import os
 from supabase import create_client, Client
-from app.config import settings
-from typing import Optional
 import logging
+from pathlib import Path
+from io import BytesIO
+import tempfile
 
 logger = logging.getLogger(__name__)
 
-class SupabaseStorageClient:
-    """Client for managing PDF files in Supabase Storage"""
+class StorageClient:
+    """Client for interacting with Supabase Storage"""
     
     def __init__(self):
-        self.client: Client = create_client(
-            settings.SUPABASE_URL,
-            settings.SUPABASE_ANON_KEY
-        )
-        self.bucket = settings.SUPABASE_BUCKET
+        """Initialize Supabase client with credentials from environment variables"""
+        supabase_url = os.getenv('SUPABASE_URL')
+        supabase_key = os.getenv('SUPABASE_KEY')
+        
+        if not supabase_url or not supabase_key:
+            raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in environment variables")
+        
+        self.client: Client = create_client(supabase_url, supabase_key)
+        logger.info("Supabase client initialized successfully")
     
-    def upload_pdf(
-        self, 
-        file_path: str, 
-        storage_path: str,
-        overwrite: bool = False
-    ) -> Optional[str]:
-        """
-        Upload a PDF file to Supabase Storage
+    def create_bucket(self, bucket_name: str, public: bool = False) -> bool:
+        """Create a new storage bucket if it doesn't exist
         
         Args:
-            file_path: Local path to PDF file
-            storage_path: Path in storage (e.g., '2024/MotoGP/Qatar/FP1.pdf')
-            overwrite: Whether to overwrite existing file
+            bucket_name: Name of the bucket to create
+            public: Whether the bucket should be publicly accessible
             
         Returns:
-            Public URL of uploaded file or None if failed
+            bool: True if bucket created or already exists
         """
         try:
-            with open(file_path, 'rb') as f:
-                response = self.client.storage.from_(self.bucket).upload(
-                    path=storage_path,
-                    file=f,
-                    file_options={
-                        "content-type": "application/pdf",
-                        "upsert": overwrite
-                    }
-                )
+            # Check if bucket exists
+            buckets = self.client.storage.list_buckets()
+            bucket_exists = any(bucket['name'] == bucket_name for bucket in buckets)
             
-            # Get public URL
-            url = self.client.storage.from_(self.bucket).get_public_url(storage_path)
-            logger.info(f"Uploaded PDF to: {url}")
-            return url
+            if bucket_exists:
+                logger.info(f"Bucket '{bucket_name}' already exists")
+                return True
+            
+            # Create bucket
+            self.client.storage.create_bucket(bucket_name, options={'public': public})
+            logger.info(f"Created bucket '{bucket_name}'")
+            return True
             
         except Exception as e:
-            logger.error(f"Failed to upload {file_path}: {e}")
-            return None
+            logger.error(f"Error creating bucket '{bucket_name}': {e}")
+            return False
     
-    def download_pdf(self, storage_path: str, local_path: str) -> bool:
-        """
-        Download a PDF from Supabase Storage
+    def upload_file(self, bucket_name: str, file_path: str, object_name: str = None, 
+                   folder_path: str = None) -> str:
+        """Upload a file to Supabase storage
         
         Args:
-            storage_path: Path in storage
+            bucket_name: Name of the bucket to upload to
+            file_path: Local path to the file
+            object_name: Name to give the file in storage (defaults to filename)
+            folder_path: Optional folder path within bucket (e.g., '2024/motogp/race1')
+            
+        Returns:
+            str: Public URL of uploaded file
+        """
+        try:
+            if not os.path.exists(file_path):
+                raise FileNotFoundError(f"File not found: {file_path}")
+            
+            # Use filename if object_name not provided
+            if object_name is None:
+                object_name = os.path.basename(file_path)
+            
+            # Construct full path with folder if provided
+            if folder_path:
+                storage_path = f"{folder_path.strip('/')}/{object_name}"
+            else:
+                storage_path = object_name
+            
+            # Read file content
+            with open(file_path, 'rb') as f:
+                file_content = f.read()
+            
+            # Upload to Supabase
+            response = self.client.storage.from_(bucket_name).upload(
+                path=storage_path,
+                file=file_content,
+                file_options={"content-type": "application/pdf"}
+            )
+            
+            logger.info(f"Uploaded {file_path} to {bucket_name}/{storage_path}")
+            
+            # Get public URL
+            public_url = self.client.storage.from_(bucket_name).get_public_url(storage_path)
+            return public_url
+            
+        except Exception as e:
+            logger.error(f"Error uploading file {file_path}: {e}")
+            raise
+    
+    def download_file(self, bucket_name: str, storage_path: str) -> BytesIO:
+        """Download a file from Supabase storage
+        
+        Args:
+            bucket_name: Name of the bucket
+            storage_path: Path to file in storage
             local_path: Local path to save file
             
         Returns:
-            True if successful, False otherwise
+            str: Path to downloaded file
         """
         try:
-            data = self.client.storage.from_(self.bucket).download(storage_path)
+            # Download file content
+            response = self.client.storage.from_(bucket_name).download(storage_path)
             
-            with open(local_path, 'wb') as f:
-                f.write(data)
+            # Create in-memory file
+            file_bytes = BytesIO(response)
+            file_bytes.seek(0)  # Reset position to start
             
-            logger.info(f"Downloaded PDF to: {local_path}")
-            return True
+            logger.info(f"Downloaded {storage_path} from {bucket_name} to memory")
+            return file_bytes
             
         except Exception as e:
-            logger.error(f"Failed to download {storage_path}: {e}")
-            return False
+            logger.error(f"Error downloading file {storage_path}: {e}")
+            raise
     
-    def get_public_url(self, storage_path: str) -> str:
-        """Get public URL for a stored PDF"""
-        return self.client.storage.from_(self.bucket).get_public_url(storage_path)
-    
-    def list_pdfs(self, folder: str = "") -> list:
-        """List all PDFs in a folder"""
+    def list_files(self, bucket_name: str, folder_path: str = None) -> list:
+        """List files in a bucket or folder
+        
+        Args:
+            bucket_name: Name of the bucket
+            folder_path: Optional folder path to list
+            
+        Returns:
+            list: List of file objects
+        """
         try:
-            files = self.client.storage.from_(self.bucket).list(folder)
-            return [f for f in files if f.get('name', '').endswith('.pdf')]
+            path = folder_path if folder_path else ''
+            files = self.client.storage.from_(bucket_name).list(path)
+            logger.info(f"Listed {len(files)} files in {bucket_name}/{path}")
+            return files
+            
         except Exception as e:
-            logger.error(f"Failed to list files in {folder}: {e}")
+            logger.error(f"Error listing files in {bucket_name}: {e}")
             return []
     
-    def delete_pdf(self, storage_path: str) -> bool:
-        """Delete a PDF from storage"""
+    def delete_file(self, bucket_name: str, storage_path: str) -> bool:
+        """Delete a file from storage
+        
+        Args:
+            bucket_name: Name of the bucket
+            storage_path: Path to file in storage
+            
+        Returns:
+            bool: True if deleted successfully
+        """
         try:
-            self.client.storage.from_(self.bucket).remove([storage_path])
-            logger.info(f"Deleted PDF: {storage_path}")
+            self.client.storage.from_(bucket_name).remove([storage_path])
+            logger.info(f"Deleted {storage_path} from {bucket_name}")
             return True
+            
         except Exception as e:
-            logger.error(f"Failed to delete {storage_path}: {e}")
+            logger.error(f"Error deleting file {storage_path}: {e}")
             return False
-
-
-# Singleton instance
-storage_client = SupabaseStorageClient()

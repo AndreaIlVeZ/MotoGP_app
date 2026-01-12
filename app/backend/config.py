@@ -40,7 +40,7 @@ class Settings(BaseSettings):
 
     # Supabase Storage
     SUPABASE_URL: str
-    SUPABASE_ANON_KEY: str
+    SUPABASE_KEY: str
     SUPABASE_BUCKET: str = "motogp-pdfs"
     
     

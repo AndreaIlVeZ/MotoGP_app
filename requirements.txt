@@ -19,7 +19,7 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 
 # HTTP Client
-httpx==0.28.1
+httpx==0.24.1
 
 # Testing
 pytest==8.3.4
@@ -33,3 +33,5 @@ flake8==7.1.1
 wikipedia-api==0.8.1
 selenium==4.16.0
 webdriver-manager==4.0.1
+camelot-py[cv]==0.10.1
+pandas==2.2.0
