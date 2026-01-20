@@ -4,6 +4,8 @@
 ### the pdfs are then stored in a folder structure that mirrors the motogp one
 ### the pdfs will be then taken by the pdf_tybles
 
+
+#.---- refactor the navigation part with the expected outome EC 
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -14,12 +16,9 @@ from webdriver_manager.chrome import ChromeDriverManager
 import pandas as pd
 
 import logging
-import os
 import time
-import tempfile
-import shutil
-from urllib.parse import urljoin, urlparse
-from pathlib import Path
+import datetime 
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +93,7 @@ class MotoGPPDFScraper:
                     try:
                         status = race.find_element(By.CSS_SELECTOR, '.calendar-grid-card__grid-card-status').text
                     except Exception as e:
-                        print(f"⚠️ No status found for race {}: {e}".format(index))
+                        print(f"⚠️ No status found for race: {e}".format(index))
                         status = None
                     
                     date_range = race.find_element(By.CSS_SELECTOR, '.calendar-grid-card__grid-card-date span').text
