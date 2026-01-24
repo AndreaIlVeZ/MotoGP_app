@@ -156,17 +156,23 @@ class MotoGPRidersTeamsScraper:
                 teams_load = []
                 for index, team in enumerate(teams):
                     team_name = team.find_element(By.CSS_SELECTOR, 'div.teams-list__info-name').text
-                    team_riders = team.find_element(By.CSS_SELECTOR, 'div.teams-list__info-container').text
                     team_stat_page = team.get_attribute('href')
-
-                    teams_load.append({
-                        "sequence_id": index,
-                        "category": category,
-                        "name": team_name,
-                        "riders": team_riders,
-                        "page_ref": team_stat_page
-                    })
-                logger.info(f"Extracted {len(teams_load)} riders from MotoGP page")
+                    # Find the container and all rider elements within it
+                    team_riders_container = team.find_element(By.CSS_SELECTOR, 'div.teams-list__info-container')
+                    rider_elements = team_riders_container.find_elements(By.CSS_SELECTOR, 'div')  # Adjust selector as needed
+                    
+                    # Create one entry per rider
+                    for rider_idx, rider_element in enumerate(rider_elements):
+                        rider_name = rider_element.text.strip()
+                        if rider_name:  # Skip empty elements
+                            teams_load.append({
+                                "sequence_id": f"{index}_{rider_idx}",
+                                "category": category,
+                                "team_name": team_name,
+                                "rider_name": rider_name,
+                                "page_ref": team_stat_page
+                            })
+                    logger.info(f"Extracted {len(teams_load)} riders from MotoGP page")
             
                 teams_data.extend(teams_load)
 

@@ -22,7 +22,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-class MotoGPCalendarScraper:
+class MotoGPPdfsDownloader:
     """Scraper to extract calendar of MotoGP website using Selenium"""
     
     MAIN_PAGE = 'https://www.motogp.com/en'
@@ -54,6 +54,7 @@ class MotoGPCalendarScraper:
             logger.error(f"Failed to initialize ChromeDriver: {e}")
             raise
     
+    ## needs url setup
     def pdf_extract(self, download_dir: str = None, push_to_supabase: bool = True):
         """Extract PDFs from MotoGP page following the outlined steps
         
