@@ -104,7 +104,8 @@ class MotoGPPDFScraper:
                     # Extract flag image URL
                     try:
                         flag_url = race.find_element(By.CSS_SELECTOR, '.calendar-grid-card__event-flag').get_attribute('src')
-                    except:
+                    except Exception as e:
+                        print(f"⚠️ No flag found {e}")
                         flag_url = None
                     
                     race_info = {

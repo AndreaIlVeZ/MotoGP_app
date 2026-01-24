@@ -247,4 +247,4 @@ class StorageClient:
         except Exception as e:
             logger.error(f"Error uploading from memory: {e}")
             raise
-        
+    
