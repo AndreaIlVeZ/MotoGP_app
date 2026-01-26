@@ -4,6 +4,8 @@
 ### the pdfs are then stored in a folder structure that mirrors the motogp one
 ### the pdfs will be then taken by the pdf_tybles
 
+
+#.---- refactor the navigation part with the expected outome EC 
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -11,21 +13,19 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
+import pandas as pd
 
 import logging
-import os
 import time
-import tempfile
-import shutil
-from urllib.parse import urljoin, urlparse
-from pathlib import Path
+import datetime 
+import json
 
 logger = logging.getLogger(__name__)
 
-class MotoGPPdfsDownloader:
+class MotoGPCalendarScraper:
     """Scraper to extract calendar of MotoGP website using Selenium"""
     
-    MAIN_PAGE = 'https://www.motogp.com/en'
+    CALENDAR_URL = "https://www.motogp.com/en/calendar?view=grid"
     
     def __init__(self, headless: bool = True):
         self.driver = None
@@ -54,8 +54,7 @@ class MotoGPPdfsDownloader:
             logger.error(f"Failed to initialize ChromeDriver: {e}")
             raise
     
-    ## needs url setup
-    def pdf_extract(self, download_dir: str = None, push_to_supabase: bool = True):
+    def calendar_extract(self, download_dir: str = None, push_to_supabase: bool = True):
         """Extract PDFs from MotoGP page following the outlined steps
         
         Args:
@@ -65,175 +64,123 @@ class MotoGPPdfsDownloader:
         Returns:
             list: List of downloaded PDF file paths
         """
+        CALENDAR_URL = "https://www.motogp.com/en/calendar?view=grid"
         try:
-            # Create download directory if not provided
-            if download_dir is None:
-                download_dir = tempfile.mkdtemp(prefix='motogp_pdfs_')
-                logger.info(f"Created temporary download directory: {download_dir}")
-            else:
-                os.makedirs(download_dir, exist_ok=True)
-            
-            # Configure Chrome to download files to our specified directory
-            self._configure_download_directory(download_dir)
-            
-            downloaded_files = []
-            
-            # Step 1: Find the elements with xpath //div[contains(@class, "pdf-table__table ")]
-            # Should be 3 containers
-            xpath_files = '//div[contains(@class, "pdf-table__table ")]'
-            
-            # Wait for elements to be present
-            wait = WebDriverWait(self.driver, 10)
-            wait.until(EC.presence_of_element_located((By.XPATH, xpath_files)))
-            
-            containers = self.driver.find_elements(By.XPATH, xpath_files)
-            logger.info(f"Found {len(containers)} PDF table containers")
-            
-            # Step 2: For each container, find elements by href
-            for i, container in enumerate(containers, 1):
-                logger.info(f"Processing container {i}/{len(containers)}")
-                
-                # Find all anchor tags with href attributes (PDF links)
-                pdf_links = container.find_elements(By.XPATH, './/a[@href]')
-                
-                for j, link in enumerate(pdf_links, 1):
-                    try:
-                        href = link.get_attribute('href')
                         
-                        # Check if it's a PDF link
-                        if href and href.lower().endswith('.pdf'):
-                            logger.info(f"Found PDF link {j}: {href}")
-                            
-                            # Step 3: Click and download the file
-                            pdf_file = self._download_pdf(link, href, download_dir, f"container_{i}_pdf_{j}")
-                            if pdf_file:
-                                downloaded_files.append(pdf_file)
-                                
+            self.driver.get(CALENDAR_URL)
+            time.sleep(5)  # attendi che la pagina si carichi completamente
+
+            self.driver.find_element(By.ID, "onetrust-reject-all-handler").click()
+            time.sleep(2)  # attendi che il banner scompaia
+
+            # trovare la componente che mi serve
+            # xpath '//div[contains(@class, "calendar-listing__grid-view")]'
+            calendar = self.driver.find_element(By.XPATH, '//div[contains(@class, "calendar-listing__grid-view")]')
+            ## get elements inside the components 
+
+            races = calendar.find_elements(By.CSS_SELECTOR, 'a.calendar-grid-card')
+            # Step 2: For each container, find elements by href
+            
+            races_data = []
+            for index, race in enumerate(races, 1):
+                try:
+                    # Extract attributes from the <a> tag
+                    event_id = race.get_attribute("data-event-id")
+                    title = race.get_attribute("title")
+                    href = race.get_attribute("href")
+                    
+                    # Extract text from nested elements
+                    try:
+                        status = race.find_element(By.CSS_SELECTOR, '.calendar-grid-card__grid-card-status').text
                     except Exception as e:
-                        logger.error(f"Error processing PDF link {j} in container {i}: {e}")
-                        continue
+                        print(f"⚠️ No status found for race: {e}".format(index))
+                        status = None
+                    
+                    date_range = race.find_element(By.CSS_SELECTOR, '.calendar-grid-card__grid-card-date span').text
+                    sequence = race.find_element(By.CSS_SELECTOR, '.calendar-grid-card__grid-card-event-sequence').text.strip()
+                    country = race.find_element(By.CSS_SELECTOR, '.calendar-grid-card__grid-card-event-full-name').text
+                    event_name = race.find_element(By.CSS_SELECTOR, '.calendar-grid-card__grid-card-event-name').text
+                    
+                    # Extract flag image URL
+                    try:
+                        flag_url = race.find_element(By.CSS_SELECTOR, '.calendar-grid-card__event-flag').get_attribute('src')
+                    except Exception as e:
+                        print(f"⚠️ No flag found {e}")
+                        flag_url = None
+                    
+                    race_info = {
+                        'sequence': int(sequence),
+                        'event_id': event_id,
+                        'title': title,
+                        'country': country,
+                        'event_name': event_name,
+                        'date_range': date_range,
+                        'status': status,
+                        'url': href,
+                        'flag_url': flag_url
+                    }
+                    
+                    races_data.append(race_info)
+                    
+                    print(f"{sequence}. {country} - {event_name}")
+                    print(f"   Date: {date_range}")
+                    print(f"   Status: {status}")
+                    print(f"   URL: {href}")
+                    print()
+                    
+                except Exception as e:
+                    print(f"❌ Error extracting race {index}: {e}")
+                    continue
+
+            self.driver.close()
+
+            print(f"\n✅ Successfully extracted {len(races_data)} races")
             
-            logger.info(f"Successfully downloaded {len(downloaded_files)} PDF files")
+            # Step 4: Push the PDFs to Supabase as json
+            races_df = pd.DataFrame(races_data)
+
+                # Push to Supabase if requested
+            if push_to_supabase and races_data:
+                self._push_calendar_to_supabase(races_data, races_df)
             
-            # Step 4: Push the PDFs to Supabase (if enabled)
-            if push_to_supabase and downloaded_files:
-                self._push_to_supabase(downloaded_files)
-            
-            return downloaded_files
+            return races_df
             
         except Exception as e:
             logger.error(f"Error in pdf_extract: {e}")
             raise
-    
-    def _configure_download_directory(self, download_dir: str):
-        """Configure Chrome to download files to specified directory"""
+    def _push_calendar_to_supabase(self, races_data: list, races_df: pd.DataFrame):
+        """Push calendar data to Supabase as JSON (from memory)"""
         try:
-            # Execute Chrome DevTools command to set download behavior
-            self.driver.execute_cdp_cmd('Page.setDownloadBehavior', {
-                'behavior': 'allow',
-                'downloadPath': download_dir
-            })
-            logger.info(f"Configured download directory: {download_dir}")
-        except Exception as e:
-            logger.warning(f"Could not configure download directory: {e}")
-    
-    def _download_pdf(self, link_element, href: str, download_dir: str, filename_prefix: str) -> str:
-        """Download a single PDF file
-        
-        Args:
-            link_element: Selenium WebElement for the link
-            href: URL of the PDF
-            download_dir: Directory to download to
-            filename_prefix: Prefix for the downloaded file
-            
-        Returns:
-            str: Path to downloaded file, or None if failed
-        """
-        try:
-            # Get the original filename from URL
-            parsed_url = urlparse(href)
-            original_filename = os.path.basename(parsed_url.path)
-            
-            if not original_filename:
-                original_filename = f"{filename_prefix}.pdf"
-            
-            # Get initial file count in download directory
-            initial_files = set(os.listdir(download_dir))
-            
-            # Click the link to start download
-            logger.info(f"Clicking link to download: {original_filename}")
-            link_element.click()
-            
-            # Wait for download to complete
-            max_wait_time = 30  # seconds
-            wait_interval = 1
-            elapsed_time = 0
-            
-            while elapsed_time < max_wait_time:
-                time.sleep(wait_interval)
-                elapsed_time += wait_interval
-                
-                current_files = set(os.listdir(download_dir))
-                new_files = current_files - initial_files
-                
-                # Check for completed downloads (not .crdownload files)
-                completed_files = [f for f in new_files if not f.endswith('.crdownload')]
-                
-                if completed_files:
-                    downloaded_file = completed_files[0]
-                    full_path = os.path.join(download_dir, downloaded_file)
-                    
-                    # Rename file with our prefix if needed
-                    if not downloaded_file.startswith(filename_prefix):
-                        new_name = f"{filename_prefix}_{downloaded_file}"
-                        new_path = os.path.join(download_dir, new_name)
-                        shutil.move(full_path, new_path)
-                        full_path = new_path
-                    
-                    logger.info(f"Successfully downloaded: {full_path}")
-                    return full_path
-            
-            logger.warning(f"Download timeout for {original_filename}")
-            return None
-            
-        except Exception as e:
-            logger.error(f"Error downloading PDF {href}: {e}")
-            return None
-    
-    def _push_to_supabase(self, file_paths: list):
-        """Push downloaded PDFs to Supabase storage
-        
-        Args:
-            file_paths: List of local file paths to upload
-        """
-        try:
-            # Import storage client (assuming it exists)
-            from app.storage.storage_client import StorageClient
+            from storage.storage_client import StorageClient
+            import io
             
             storage_client = StorageClient()
-            storage_client.create_bucket('motogp-pdfs', public=False)
+            storage_client.create_bucket('motogp_data', public=False)
             
-            for file_path in file_paths:
-                try:
-                    filename = os.path.basename(file_path)
-                    logger.info(f"Uploading {filename} to Supabase...")
-                    
-                    # Upload to Supabase bucket (adjust bucket name as needed)
-                    storage_client.upload_file(
-                        bucket_name='motogp-pdfs',
-                        file_path=file_path,
-                        object_name=filename
-                    )
-                    
-                    logger.info(f"Successfully uploaded {filename} to Supabase")
-                    
-                except Exception as e:
-                    logger.error(f"Failed to upload {file_path} to Supabase: {e}")
-                    
-        except ImportError:
-            logger.warning("StorageClient not found. Skipping Supabase upload.")
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            year = datetime.now().year
+            
+            # Convert to JSON string
+            json_string = json.dumps(races_data, indent=2)
+            json_bytes = io.BytesIO(json_string.encode('utf-8'))
+            
+            # Upload directly from memory
+            json_filename = f'calendar_{year}_{timestamp}.json'
+            
+            # Note: You'll need to add this method to StorageClient
+            storage_client.upload_from_memory(
+                bucket_name='motogp_data',
+                file_content=json_bytes.getvalue(),
+                object_name=json_filename,
+                folder_path=f'{year}/calendar',
+                content_type='application/json'
+            )
+            
+            logger.info(f"✅ Uploaded calendar JSON to Supabase: {json_filename}")
+            
         except Exception as e:
-            logger.error(f"Error pushing files to Supabase: {e}")
+            logger.error(f"Error pushing calendar to Supabase: {e}")
+            raise
 
     def close(self):
         """Close the browser"""
